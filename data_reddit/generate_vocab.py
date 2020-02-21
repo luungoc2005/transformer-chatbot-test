@@ -2,7 +2,7 @@ from os import path, listdir
 from tokenizers import SentencePieceBPETokenizer
 
 DATA_PATH = './data/reddit/raw'
-VOCAB_SIZE = 12000
+VOCAB_SIZE = 8000
 
 special_tokens = [
     '[PAD]',

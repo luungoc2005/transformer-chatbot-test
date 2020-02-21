@@ -84,7 +84,7 @@ class LanguageModelTrainer(pl.LightningModule):
 
         tensorboard_logs = {
             'train_loss': loss,
-            'ppl': math.exp(loss.cpu().item())
+            'ppl': torch.exp(loss)
         }
 
         return {'loss': loss, 'log': tensorboard_logs}
@@ -97,13 +97,23 @@ class LanguageModelTrainer(pl.LightningModule):
         loss = F.cross_entropy(
             output.view(-1, self.vocab_size), targets
         )
+        ppl = torch.exp(loss)
 
         tensorboard_logs = {
-            'train_loss': loss,
-            'ppl': math.exp(loss.cpu().item())
+            'val_loss': loss,
+            'val_ppl': ppl
         }
 
-        return {'loss': loss, 'log': tensorboard_logs}
+        return {'val_loss': loss, 'val_ppl': ppl, 'log': tensorboard_logs}
+
+
+    def validation_end(self, outputs):
+        # OPTIONAL
+        avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
+        avg_ppl = torch.stack([x['val_ppl'] for x in outputs]).mean()
+        tensorboard_logs = {'val_loss': avg_loss, 'val_ppl': avg_ppl}
+        return {'avg_val_loss': avg_loss, 'log': tensorboard_logs}
+
 
     def configure_optimizers(self):
         from radam import RAdam

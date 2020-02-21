@@ -66,7 +66,7 @@ class TransformerModel(nn.Module):
         self.model_type = 'Transformer'
         self.src_mask = None
         self.pos_encoder = PositionalEncoding(ninp, dropout)
-        encoder_layers = TransformerEncoderLayer(ninp, nhead, nhid, dropout)
+        encoder_layers = TransformerEncoderLayer(ninp, nhead, nhid, dropout, activation='gelu')
 
         if tie_layers:
             self.transformer_encoder = TiedTransformerEncoder(encoder_layers, nlayers)
@@ -75,8 +75,9 @@ class TransformerModel(nn.Module):
 
         self.encoder = nn.Embedding(ntoken, ninp)
         self.ninp = ninp
+        self.tie_encoder_decoder = tie_encoder_decoder
 
-        if tie_encoder_decoder:
+        if self.tie_encoder_decoder:
             self.decoder = nn.Linear(ninp, ntoken)
             self.decoder.weight = self.encoder.weight
         else:
@@ -90,10 +91,13 @@ class TransformerModel(nn.Module):
         return mask
 
     def init_weights(self):
-        initrange = 0.1
-        self.encoder.weight.data.uniform_(-initrange, initrange)
+        initrange = 0.02
+        
+        self.encoder.weight.data.normal_(0., initrange)
         self.decoder.bias.data.zero_()
-        self.decoder.weight.data.uniform_(-initrange, initrange)
+
+        if not self.tie_encoder_decoder:
+            self.decoder.weight.data.uniform_(0., initrange)
 
     def forward(self, src):
         if self.src_mask is None or self.src_mask.size(0) != len(src):

@@ -26,18 +26,18 @@ if __name__ == "__main__":
 
     config = DotDict({
         'model_type': 'transformer',
-        'ninp': 256, 
-        'nhead': 4, 
-        'nhid': 1024,
+        'ninp': 512, 
+        'nhead': 8, 
+        'nhid': 2048,
         'nlayers': 12, 
         'tie_layers': True,
         'tie_encoder_decoder': True,
         'dropout': 0.1,
-        'lr': 3e-4,
-        'num_warmup_steps': 10000,
-        'batch_size': 32,
-        'accumulate_grad_batches': 2,
-        'bptt': 384
+        'lr': 1.8e-4,
+        'num_warmup_steps': 0,
+        'batch_size': 24,
+        'accumulate_grad_batches': 6,
+        'bptt': 512
     })
     model = LanguageModelTrainer(config)
 
