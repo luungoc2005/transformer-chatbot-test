@@ -127,10 +127,10 @@ class LSTMModel(nn.Module):
         self.tie_encoder_decoder = tie_encoder_decoder
 
         if self.tie_encoder_decoder:
-            self.decoder = nn.Linear(ninp, ntoken)
+            self.decoder = nn.Linear(nhid, ntoken)
             self.decoder.weight = self.encoder.weight
         else:
-            self.decoder = nn.Linear(ninp, ntoken)
+            self.decoder = nn.Linear(nhid, ntoken)
 
         self.init_weights()
 
@@ -138,10 +138,9 @@ class LSTMModel(nn.Module):
         initrange = 0.02
 
         self.encoder.weight.data.normal_(0., initrange)
-        self.decoder.bias.data.zero_()
 
-        if not self.tie_encoder_decoder:
-            self.decoder.weight.data.uniform_(0., initrange)
+        if self.tie_encoder_decoder:
+            self.decoder.bias.data.zero_()
 
     def forward(self, src):
         src = self.encoder(src)
