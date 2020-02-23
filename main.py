@@ -7,6 +7,22 @@ if __name__ == "__main__":
     from utils import DotDict
     from os import path
 
+    config = DotDict({
+        'model_type': 'transformer',
+        'ninp': 256, 
+        'nhead': 4, 
+        'nhid': 1024,
+        'nlayers': 6,
+        'tie_layers': True,
+        'tie_encoder_decoder': False,
+        'dropout': 0.1,
+        'lr': 3e-4,
+        'num_warmup_steps': 16000,
+        'batch_size': 32,
+        'accumulate_grad_batches': 12,
+        'bptt': 512
+    })
+
     if path.exists('.comet.config'):
         import configparser
         comet_config = configparser.ConfigParser()
@@ -19,30 +35,17 @@ if __name__ == "__main__":
             workspace="luungoc2005"
         )
 
+        for k, v in config.items():
+            logger.experiment.log_parameter(k, v)
     else:
         logger = loggers.TensorBoardLogger()
 
     checkpoint_callback = ModelCheckpoint(filepath='./checkpoints/')
 
-    config = DotDict({
-        'model_type': 'transformer',
-        'ninp': 512, 
-        'nhead': 8, 
-        'nhid': 2048,
-        'nlayers': 12, 
-        'tie_layers': True,
-        'tie_encoder_decoder': True,
-        'dropout': 0.1,
-        'lr': 1.8e-4,
-        'num_warmup_steps': 0,
-        'batch_size': 24,
-        'accumulate_grad_batches': 6,
-        'bptt': 512
-    })
     model = LanguageModelTrainer(config)
 
     trainer = Trainer(
-        gradient_clip_val=.5,
+        gradient_clip_val=.03,
         gpus=1,
         use_amp=True,
         accumulate_grad_batches=config.get('accumulate_grad_batches', 1),

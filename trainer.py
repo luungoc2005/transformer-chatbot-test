@@ -9,7 +9,7 @@ import pytorch_lightning as pl
 
 from utils import DotDict, get_batch
 
-from models import TransformerModel
+from models import TransformerModel, LSTMModel
 from data import RedditCorpus
 
 SAVE_PATH = './models/'
@@ -63,9 +63,12 @@ class LanguageModelTrainer(pl.LightningModule):
         self.vocab_size = get_default_tokenizer()._tokenizer.get_vocab_size()
 
         self.model_type = hparams.get('model_type', 'transformer')
-        assert self.model_type == 'transformer'
+        assert self.model_type in ['transformer', 'lstm']
 
-        self.model = TransformerModel(ntoken=self.vocab_size, **hparams)
+        if self.model_type == 'transformer':
+            self.model = TransformerModel(ntoken=self.vocab_size, **hparams)
+        else:
+            self.model = LSTMModel(ntoken=self.vocab_size, **hparams)
         
         self.batch_size = hparams.get('batch_size', 64)
         self.bptt = hparams.get('bptt', 128)
@@ -118,7 +121,10 @@ class LanguageModelTrainer(pl.LightningModule):
     def configure_optimizers(self):
         from radam import RAdam
 
-        optimizer = RAdam(self.parameters(), lr=self.hparams.get('lr', 3e-4))
+        optimizer = RAdam(self.parameters(), 
+            lr=self.hparams.get('lr', 3e-4),
+            betas=(0.9, 0.980)
+        )
 
         self.scheduler = None
 
@@ -136,7 +142,10 @@ class LanguageModelTrainer(pl.LightningModule):
                 def lr_lambda(current_step):
                     if current_step < num_warmup_steps:
                         return float(current_step) / float(max(1.0, num_warmup_steps))
-                    return 1.0
+                    else:
+                        # return 1
+                        # decay
+                        return num_warmup_steps ** .5 * current_step ** -0.5
 
                 self.scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda, last_epoch=-1)
 

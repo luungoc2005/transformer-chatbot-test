@@ -1,0 +1,1 @@
+{"model_type": "transformer", "ninp": 128, "nhead": 2, "nhid": 512, "nlayers": 4, "tie_layers": false, "tie_encoder_decoder": false, "dropout": 0.1, "lr": 0.001, "num_warmup_steps": 10000, "batch_size": 32, "accumulate_grad_batches": 1, "bptt": 80}

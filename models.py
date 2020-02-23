@@ -92,12 +92,11 @@ class TransformerModel(nn.Module):
 
     def init_weights(self):
         initrange = 0.02
-        
-        self.encoder.weight.data.normal_(0., initrange)
-        self.decoder.bias.data.zero_()
 
-        if not self.tie_encoder_decoder:
-            self.decoder.weight.data.uniform_(0., initrange)
+        self.encoder.weight.data.normal_(0., initrange)
+
+        if self.tie_encoder_decoder:
+            self.decoder.bias.data.zero_()
 
     def forward(self, src):
         if self.src_mask is None or self.src_mask.size(0) != len(src):
@@ -109,4 +108,44 @@ class TransformerModel(nn.Module):
         src = self.pos_encoder(src)
         output = self.transformer_encoder(src, self.src_mask)
         output = self.decoder(output)
+        return output
+
+class LSTMModel(nn.Module):
+
+    def __init__(self, ntoken, ninp, nhid, nlayers,
+        tie_encoder_decoder=True,
+        dropout=0.4,
+        **kwargs
+    ):
+
+        super(LSTMModel, self).__init__()
+        self.model_type = 'LSTM'
+        
+        self.lstm_encoder = nn.LSTM(ninp, nhid, nlayers, dropout=dropout)
+        self.encoder = nn.Embedding(ntoken, ninp)
+        self.ninp = ninp
+        self.tie_encoder_decoder = tie_encoder_decoder
+
+        if self.tie_encoder_decoder:
+            self.decoder = nn.Linear(ninp, ntoken)
+            self.decoder.weight = self.encoder.weight
+        else:
+            self.decoder = nn.Linear(ninp, ntoken)
+
+        self.init_weights()
+
+    def init_weights(self):
+        initrange = 0.02
+
+        self.encoder.weight.data.normal_(0., initrange)
+        self.decoder.bias.data.zero_()
+
+        if not self.tie_encoder_decoder:
+            self.decoder.weight.data.uniform_(0., initrange)
+
+    def forward(self, src):
+        src = self.encoder(src)
+        output, _ = self.lstm_encoder(src)
+        output = self.decoder(output)
+
         return output
