@@ -13,23 +13,24 @@ special_tokens = [
     '[DOC_SEP]'
 ]
 
-tokenizer = SentencePieceBPETokenizer(unk_token='[UNK]')
+if __name__ == "__main__":
+    tokenizer = SentencePieceBPETokenizer(unk_token='[UNK]')
 
-texts = [
-    path.join(DATA_PATH, item)
-    for item in listdir(DATA_PATH)
-    if item.endswith('.txt')
-]
+    texts = [
+        path.join(DATA_PATH, item)
+        for item in listdir(DATA_PATH)
+        if item.endswith('.txt')
+    ]
 
-tokenizer.train(texts, 
-    vocab_size=VOCAB_SIZE, 
-    min_frequency=10,
-    special_tokens=special_tokens
-)
+    tokenizer.train(texts, 
+        vocab_size=VOCAB_SIZE, 
+        min_frequency=10,
+        special_tokens=special_tokens
+    )
 
-SAVE_PATH = path.join(DATA_PATH, 'vocab')
-if not path.isdir(SAVE_PATH):
-    import os
-    os.makedirs(SAVE_PATH)
+    SAVE_PATH = path.join(DATA_PATH, 'vocab')
+    if not path.isdir(SAVE_PATH):
+        import os
+        os.makedirs(SAVE_PATH)
 
-tokenizer.save(SAVE_PATH, 'en')
+    tokenizer.save(SAVE_PATH, 'en')

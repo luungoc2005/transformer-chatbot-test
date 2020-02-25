@@ -49,18 +49,20 @@ class RedditCorpus(object):
             from utils import get_default_tokenizer
             tokenizer = get_default_tokenizer()
 
-            input_ids = array('I')
-
             p0_token = tokenizer.token_to_id('[P0]')
             p1_token = tokenizer.token_to_id('[P1]')
             sep_token = tokenizer.token_to_id('[SEP]')
             doc_sep_token = tokenizer.token_to_id('[DOC_SEP]')
+            self.all_examples = []
 
             for file_name in tqdm(self.files_list):
                 with open(file_name, 'r') as input_file:
                     file_content = json.load(input_file)
 
                 for example in tqdm(file_content, leave=False):
+                    input_ids = array('I')
+                    output_ids = array('I')
+
                     context_length = len(example['context'])
                     for ix, line in enumerate(example['context']):
                         
@@ -71,27 +73,23 @@ class RedditCorpus(object):
                         
                         input_ids.extend(tokenizer.encode(line).ids + [sep_token])
 
-                    input_ids.extend([p0_token] + tokenizer.encode(example['response']).ids + [sep_token])
-
-                    input_ids.append(doc_sep_token)
+                    output_ids.extend([p0_token] + tokenizer.encode(example['response']).ids + [sep_token])
             
-            self.input_tensor = torch.LongTensor(input_ids)
-            del input_ids
+                    input_ids = torch.LongTensor(input_ids)
+                    output_ids = torch.LongTensor(input_ids)
 
-            torch.save(self.input_tensor, temp_file)
+                    self.all_examples.append((input_ids, output_ids))
+
+            torch.save(self.all_examples, temp_file)
 
         else:
-            self.input_tensor = torch.load(temp_file)
+            self.all_examples = torch.load(temp_file)
 
-    def batchify(self, batch_size):
-        data = self.input_tensor
-        # Divide the dataset into bsz parts.
-        nbatch = data.size(0) // batch_size
-        # Trim off any extra elements that wouldn't cleanly fit (remainders).
-        data = data.narrow(0, 0, nbatch * batch_size)
-        # Evenly divide the data across the bsz batches.
-        data = data.view(batch_size, -1).t().contiguous()
-        return data.to('cpu')
+    def __getitem__(self, index):
+        return self.all_examples[index]
+
+    def __len__(self):
+        return len(self.all_examples)
 
 if __name__ == "__main__":
     print('train')

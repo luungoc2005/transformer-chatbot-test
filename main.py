@@ -25,16 +25,16 @@ if __name__ == "__main__":
 
     config = DotDict({
         'model_type': 'lstm',
-        'ninp': 400,
-        'nhid': 2048,
-        'nlayers': 3,
-        'tie_encoder_decoder': False,
-        'dropout': 0.1,
+        'ninp': 128,
+        'nhid': 1024,
+        'nlayers': 1,
+        'dropout': 0.4,
+        'tie_encoder_decoder': True,
         'lr': 1e-3,
         'num_warmup_steps': 0,
-        'batch_size': 64,
+        'batch_size': 32,
         'accumulate_grad_batches': 1,
-        'bptt': 140
+        'bptt': 80
     })
 
     if path.exists('.comet.config'):
@@ -45,7 +45,7 @@ if __name__ == "__main__":
 
         logger = loggers.CometLogger(
             api_key=comet_config['comet']['api_key'],
-            project_name="lstm-chatbot-test",
+            project_name="lstm-nmt-chatbot-test",
             workspace="luungoc2005"
         )
 

@@ -7,9 +7,10 @@ from torch.utils.data import DataLoader, Dataset
 
 import pytorch_lightning as pl
 
-from utils import DotDict, get_batch
+from utils import DotDict
 
-from models import TransformerModel, LSTMModel
+# from models import TransformerModel, LSTMModel
+from lstm_nmt_models import LSTMSeq2Seq
 from data import RedditCorpus
 
 SAVE_PATH = './models/'
@@ -26,21 +27,33 @@ def save_model(model, hparams):
     with open(config_path, 'w') as config_file:
         json.dump(hparams, config_file)
 
-
 class LMCorpusDataset(Dataset):
 
-    def __init__(self, split_name='train', batch_size=64, bptt=128):
+    def __init__(self, split_name='train', bptt=128, pad_idx=0):
         super(LMCorpusDataset, self).__init__()
 
-        self.corpus = RedditCorpus(split_name=split_name) \
-            .batchify(batch_size)
+        self.corpus = RedditCorpus(split_name=split_name)
         self.bptt = bptt
+        self.pad_idx = pad_idx
 
+    def _pad_to_length(self, tensor, length):
+        # 1d tensors only?
+        tensor_length = tensor.size(-1)
+        ret_val = torch.zeros((length,)).fill_(self.pad_idx).long()
+        if tensor_length <= length:
+            ret_val[:tensor_length] = tensor
+        else:
+            ret_val = tensor[-length:]
+
+        return ret_val, torch.LongTensor([min(tensor_length, length)])
+        
     def __len__(self):
-        return self.corpus.size(0) // self.bptt
+        return len(self.corpus)
 
     def __getitem__(self, index):
-        return get_batch(self.corpus, index, self.bptt)
+        inputs, outputs = self.corpus[index]
+
+        return self._pad_to_length(inputs, self.bptt), self._pad_to_length(outputs, self.bptt)
 
 class LanguageModelTrainer(pl.LightningModule):
 
@@ -60,7 +73,10 @@ class LanguageModelTrainer(pl.LightningModule):
                         else DotDict(hparams)
 
         from utils import get_default_tokenizer
-        self.vocab_size = get_default_tokenizer()._tokenizer.get_vocab_size()
+        _tokenizer = get_default_tokenizer()
+
+        self.vocab_size = _tokenizer._tokenizer.get_vocab_size()
+        self.pad_index = _tokenizer.token_to_id('[SEP]') or 0
 
         self.model_type = hparams.get('model_type', 'transformer')
         assert self.model_type in ['transformer', 'lstm']
@@ -68,21 +84,28 @@ class LanguageModelTrainer(pl.LightningModule):
         if self.model_type == 'transformer':
             self.model = TransformerModel(ntoken=self.vocab_size, **hparams)
         else:
-            self.model = LSTMModel(ntoken=self.vocab_size, **hparams)
+            self.model = LSTMSeq2Seq(ntoken=self.vocab_size, src_pad_idx=self.pad_index, **hparams)
         
         self.batch_size = hparams.get('batch_size', 64)
         self.bptt = hparams.get('bptt', 128)
 
-    def forward(self, x):
-        return self.model(x)
+    def forward(self, x, x_length, y, **kwargs):
+        return self.model(x, x_length, y, **kwargs)
 
     def training_step(self, batch, batch_idx):
-        data, targets = batch[0][0], batch[1][0]
+        (src, src_length), (trg, trg_length) = batch
 
-        output = self.forward(data)
+        src = src.t()
+        trg = trg.t()
+        src_length = src_length.squeeze(1)
 
+        output = self.forward(src, src_length, trg)
+
+        output_dim = output.shape[-1]
         loss = F.cross_entropy(
-            output.view(-1, self.vocab_size), targets
+            output[1:].reshape(-1, output_dim), 
+            trg[1:].reshape(-1),
+            ignore_index=self.pad_index
         )
 
         tensorboard_logs = {
@@ -93,13 +116,21 @@ class LanguageModelTrainer(pl.LightningModule):
         return {'loss': loss, 'log': tensorboard_logs}
 
     def validation_step(self, batch, batch_idx):
-        data, targets = batch[0][0], batch[1][0]
+        (src, src_length), (trg, trg_length) = batch
 
-        output = self.forward(data)
+        src = src.t()
+        trg = trg.t()
+        src_length = src_length.squeeze(1)
 
+        output = self.forward(src, src_length, trg, teacher_forcing_ratio=0)
+        
+        output_dim = output.shape[-1]
         loss = F.cross_entropy(
-            output.view(-1, self.vocab_size), targets
+            output[1:].reshape(-1, output_dim), 
+            trg[1:].reshape(-1),
+            ignore_index=self.pad_index
         )
+
         ppl = torch.exp(loss)
 
         tensorboard_logs = {
@@ -159,10 +190,10 @@ class LanguageModelTrainer(pl.LightningModule):
         return DataLoader(
             LMCorpusDataset(
                 split_name='train',
-                batch_size=self.batch_size,
+                pad_idx=self.pad_index,
                 bptt=self.bptt
             ),
-            batch_size=1,
+            batch_size=self.batch_size,
             shuffle=True
         )
 
@@ -171,9 +202,9 @@ class LanguageModelTrainer(pl.LightningModule):
         return DataLoader(
             LMCorpusDataset(
                 split_name='val',
-                batch_size=self.batch_size,
+                pad_idx=self.pad_index,
                 bptt=self.bptt
             ),
-            batch_size=1,
+            batch_size=self.batch_size,
             shuffle=True
         )
