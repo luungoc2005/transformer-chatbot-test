@@ -4,16 +4,6 @@ import torch.nn.functional as F
 from os import path
 from utils import get_default_tokenizer
 
-LEADING_TEXT = """
-[P1] There's a link to a (much) higher res version on the right for anyone who doesn't believe it.
-How many exposures does a picture like that take? [SEP]  [P0] Two, and some really cheesy software that removes all DR from your pictures and makes them look like video games. 
-Seriously, the beauty in great photography is often the high contrast, the differences between darks and lights, the shadow details... this [SEP]  [P1] Holy crap - that picture's going to shave its head, lunge at a car weilding an umbrella, and laugh maniacally as its children are forcefully removed? Damn.
-Upon further consideration, I don't really get your simile. [SEP]  [P0] No. I'm saying that Britney Spears is really easy pop music that often sounds enjoyable upon first listen, but quickly reveals itself to be utterly shallow and almost completely worthless. [SEP]  [P1] Um ... yeah. I got that. Why does no one get my sense of humor? Sarcasm really doesn't translate on reddit. 
-What you meant was, this photography is like Britney: popular, but insubstantial. [SEP]  [DOC_SEP]
-"""
-LEADING_TEXT = ""
-
-
 def top_k_top_p_filtering(logits, top_k=0, top_p=1.0, filter_value=-float("Inf"), min_tokens_to_keep=1):
     """ Filter a distribution of logits using top-k and/or nucleus (top-p) filtering
         Args:
@@ -123,12 +113,12 @@ def launch(model_params, checkpoint_path, device='cuda'):
     else:
         model = LSTMSeq2Seq(ntoken=vocab_size, **model_params)
     
-    model = model.to(device)
-
     if checkpoint_path and path.exists(checkpoint_path):
         print(f'Loading checkpoint from {checkpoint_path}')
-        checkpoint_state = torch.load(checkpoint_path)
+        checkpoint_state = torch.load(checkpoint_path, map_location=lambda storage, loc: storage)
         model.load_state_dict(checkpoint_state)
+
+    model = model.to(device)
 
     @torch.no_grad()
     def _generate(
@@ -169,17 +159,22 @@ def launch(model_params, checkpoint_path, device='cuda'):
         trg = torch.zeros((max_length, batch_size)).long().fill_(pad_token)
         trg[0,:] = p0_token
 
+        src = input_ids.t()
+        src_length = torch.LongTensor([min(max_length, src.size(0))] * batch_size).to(device)
+
         model_outputs = model(
-            input_ids.t(), 
-            torch.LongTensor([min(max_length, input_ids.size(0))] * batch_size),
+            src, 
+            src_length,
             trg,
             teacher_forcing_ratio=0
         )
+        model_outputs = torch.softmax(model_outputs, dim=-1)
+        decoded = torch.max(model_outputs, dim=-1)[1].t()
 
         return decoded
 
 
-    model_input = LEADING_TEXT
+    model_input = ''
 
     while True:
         user_prompt = input(' >>> ')
@@ -188,20 +183,20 @@ def launch(model_params, checkpoint_path, device='cuda'):
             exit()
 
         else:
-            num_return_sequences = 1
-
             model_input += ' [P0] ' + user_prompt + ' [SEP] [P1] '
 
-            input_ids = tokenizer.encode(model_input).ids
+            encoded = tokenizer.encode(model_input)
+            input_ids = encoded.ids
             input_ids = torch.LongTensor(input_ids).unsqueeze(0)
             input_ids = input_ids.to(device)
 
             output = _generate(input_ids=input_ids, max_length=min(max_length, input_ids.size(1) + 40))
 
-            if num_return_sequences != 1:
-                output = output.view(batch_size, num_return_sequences, -1)
+            # if num_return_sequences != 1:
+            #     output = output.view(batch_size, num_return_sequences, -1)
 
-            response = tokenizer.decode(output[0].cpu().tolist(), skip_special_tokens=False)
+            output = output[0].cpu().tolist()
+            response = tokenizer.decode(output, skip_special_tokens=False)
 
             eod_token = '[DOC_SEP]'
 
