@@ -102,16 +102,17 @@ def launch(model_params, checkpoint_path, device='cuda'):
 
     # Model
     
-    from models import TransformerModel, LSTMModel
+    # from models import TransformerModel, LSTMModel
     from lstm_nmt_models import LSTMSeq2Seq
+    from transformer_nmt_models import TransformerSeq2Seq
     
     model_type = model_params.get('model_type', 'transformer')
     assert model_type in ['transformer', 'lstm']
 
     if model_type == 'transformer':
-        model = TransformerModel(ntoken=vocab_size, **model_params)
+        model = TransformerSeq2Seq(ntoken=vocab_size, src_pad_idx=pad_token, **model_params)
     else:
-        model = LSTMSeq2Seq(ntoken=vocab_size, **model_params)
+        model = LSTMSeq2Seq(ntoken=vocab_size, src_pad_idx=pad_token, **model_params)
     
     if checkpoint_path and path.exists(checkpoint_path):
         print(f'Loading checkpoint from {checkpoint_path}')

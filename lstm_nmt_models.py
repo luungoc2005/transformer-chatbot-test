@@ -276,7 +276,7 @@ class LSTMSeq2Seq(nn.Module):
         mask = (src != self.src_pad_idx).permute(1, 0)
         return mask
         
-    def forward(self, src, src_len, trg, teacher_forcing_ratio = 0.5):
+    def forward(self, src, src_len, trg, teacher_forcing_ratio = 0.5, **kwargs):
         device = src.device
         #src = [src len, batch size]
         #src_len = [batch size]

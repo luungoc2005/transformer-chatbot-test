@@ -11,6 +11,8 @@ from utils import DotDict
 
 # from models import TransformerModel, LSTMModel
 from lstm_nmt_models import LSTMSeq2Seq
+from transformer_nmt_models import TransformerSeq2Seq
+
 from data import RedditCorpus
 
 SAVE_PATH = './models/'
@@ -82,7 +84,7 @@ class LanguageModelTrainer(pl.LightningModule):
         assert self.model_type in ['transformer', 'lstm']
 
         if self.model_type == 'transformer':
-            self.model = TransformerModel(ntoken=self.vocab_size, **hparams)
+            self.model = TransformerSeq2Seq(ntoken=self.vocab_size, src_pad_idx=self.pad_index, **hparams)
         else:
             self.model = LSTMSeq2Seq(ntoken=self.vocab_size, src_pad_idx=self.pad_index, **hparams)
         
@@ -98,8 +100,9 @@ class LanguageModelTrainer(pl.LightningModule):
         src = src.t()
         trg = trg.t()
         src_length = src_length.squeeze(1)
+        trg_length = trg_length.squeeze(1)
 
-        output = self.forward(src, src_length, trg)
+        output = self.forward(src, src_length, trg, trg_length=trg_length)
 
         output_dim = output.shape[-1]
         loss = F.cross_entropy(
