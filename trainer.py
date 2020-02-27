@@ -15,6 +15,8 @@ from transformer_nmt_models import TransformerSeq2Seq
 
 from data import RedditCorpus
 
+from cross_entropy import CrossEntropyLoss
+
 SAVE_PATH = './models/'
 
 def save_model(model, hparams):
@@ -28,6 +30,14 @@ def save_model(model, hparams):
     
     with open(config_path, 'w') as config_file:
         json.dump(hparams, config_file)
+
+def truncate_sequence(sequence, stop_token):
+    result = []
+    for i_id in sequence:
+        result.append(i_id)
+        if i_id == stop_token:
+            break
+    return result
 
 class LMCorpusDataset(Dataset):
 
@@ -77,8 +87,10 @@ class LanguageModelTrainer(pl.LightningModule):
         from utils import get_default_tokenizer
         _tokenizer = get_default_tokenizer()
 
+        self._tokenizer = _tokenizer
+
         self.vocab_size = _tokenizer._tokenizer.get_vocab_size()
-        self.pad_index = _tokenizer.token_to_id('[SEP]') or 0
+        self.pad_index = _tokenizer.token_to_id('[PAD]') or 0
 
         self.model_type = hparams.get('model_type', 'transformer')
         assert self.model_type in ['transformer', 'lstm']
@@ -90,6 +102,7 @@ class LanguageModelTrainer(pl.LightningModule):
         
         self.batch_size = hparams.get('batch_size', 64)
         self.bptt = hparams.get('bptt', 128)
+        self.criterion = CrossEntropyLoss(ignore_index=self.pad_index, smooth_eps=.1)
 
     def forward(self, x, x_length, y, **kwargs):
         return self.model(x, x_length, y, **kwargs)
@@ -106,10 +119,14 @@ class LanguageModelTrainer(pl.LightningModule):
             output = self.forward(src, src_length, trg, trg_length=trg_length)
 
             output_dim = output.shape[-1]
-            loss = F.cross_entropy(
-                output[1:].reshape(-1, output_dim), 
-                trg[1:].reshape(-1),
-                ignore_index=self.pad_index
+            # loss = F.cross_entropy(
+            #     output[1:].reshape(-1, output_dim), 
+            #     trg[1:].reshape(-1),
+            #     ignore_index=self.pad_index
+            # )
+            loss = self.criterion(
+                output[1:].reshape(-1, output_dim),
+                trg[1:].reshape(-1)
             )
         else:
             trg_inp, trg_out = trg[:-1], trg[1:]
@@ -121,10 +138,14 @@ class LanguageModelTrainer(pl.LightningModule):
                 trg_key_padding_mask=trg_key_mask)
 
             output_dim = output.shape[-1]
-            loss = F.cross_entropy(
+            # loss = F.cross_entropy(
+            #     output.reshape(-1, output_dim), 
+            #     trg_out.reshape(-1),
+            #     ignore_index=self.pad_index
+            # )
+            loss = self.criterion(
                 output.reshape(-1, output_dim), 
-                trg_out.reshape(-1),
-                ignore_index=self.pad_index
+                trg_out.reshape(-1)
             )
 
         tensorboard_logs = {
@@ -174,7 +195,13 @@ class LanguageModelTrainer(pl.LightningModule):
             'val_ppl': ppl
         }
 
-        return {'val_loss': loss, 'val_ppl': ppl, 'log': tensorboard_logs}
+        return {
+            'val_loss': loss, 
+            'val_ppl': ppl, 
+            'log': tensorboard_logs,
+            'batch_first_item': ((src.cpu().t()[0], src_length.cpu()[0]), (trg.cpu().t()[0], trg_length.cpu()[0])),
+            'batch_first_outputs': output.cpu()[:,0,:].squeeze(1).t()
+        }
 
 
     def validation_end(self, outputs):
@@ -182,6 +209,21 @@ class LanguageModelTrainer(pl.LightningModule):
         avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
         avg_ppl = torch.stack([x['val_ppl'] for x in outputs]).mean()
         tensorboard_logs = {'val_loss': avg_loss, 'val_ppl': avg_ppl}
+
+        # Sanity check every epoch
+        (src, src_length), (trg, trg_length) = outputs[0]['batch_first_item']
+        first_output = outputs[0]['batch_first_outputs']
+        first_output = torch.max(first_output, dim=-1)[1]
+
+        src = truncate_sequence(src.cpu().tolist(), self.pad_index)
+        trg = truncate_sequence(trg.cpu().tolist(), self.pad_index)
+        first_output = truncate_sequence(first_output.cpu().tolist(), self.pad_index)
+
+        print()
+        print('Source: ' + self._tokenizer.decode(src, skip_special_tokens=False))
+        print('Target: ' + self._tokenizer.decode(trg, skip_special_tokens=False))
+        print('Predicted: ' + self._tokenizer.decode(first_output, skip_special_tokens=False))
+
         return {'avg_val_loss': avg_loss, 'log': tensorboard_logs}
 
 
@@ -190,7 +232,8 @@ class LanguageModelTrainer(pl.LightningModule):
 
         optimizer = RAdam(self.parameters(), 
             lr=self.hparams.get('lr', 3e-4),
-            betas=(0.9, 0.980)
+            betas=(0.9, 0.980),
+            eps=1e-9
         )
 
         self.scheduler = None
