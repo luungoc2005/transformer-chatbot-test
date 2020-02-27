@@ -163,17 +163,34 @@ def launch(model_params, checkpoint_path, device='cuda'):
         src = input_ids.t()
         src_length = torch.LongTensor([min(max_length, src.size(0))] * batch_size).to(device)
 
-        model_outputs = model(
-            src, 
-            src_length,
-            trg,
-            teacher_forcing_ratio=0
-        )
-        model_outputs = torch.softmax(model_outputs, dim=-1)
-        decoded = torch.max(model_outputs, dim=-1)[1].t()
+        if model_type == 'lstm':
+            model_outputs = model(
+                src, 
+                src_length,
+                trg,
+                teacher_forcing_ratio=0
+            )
+            model_outputs = torch.softmax(model_outputs, dim=-1)
+            decoded = torch.max(model_outputs, dim=-1)[1].t()
 
-        return decoded
+            return decoded
+        else:
+            decoded = [p0_token]
+            while cur_len < max_length and int(decoded[-1]) not in eos_token_ids:
+                src = torch.zeros((model.bptt, batch_size)).long().to(input_ids.device)
+                src[:input_ids.size(1),:] = input_ids.t()
 
+                trg_inp = torch.LongTensor([decoded]).t().to(input_ids.device)
+                trg_nopeek_mask = model._create_nopeek_mask(trg_inp.size(0), trg_inp.device)
+                model_outputs = model(src, src_length, trg_inp, \
+                    trg_mask=trg_nopeek_mask,
+                    trg_key_padding_mask=None)
+                top_output = torch.max(model_outputs, dim=-1)[1]
+                top_output = top_output.t()[0][0]
+                decoded.append(top_output)
+                cur_len += 1
+            
+            return torch.LongTensor([decoded])
 
     model_input = ''
 
@@ -187,7 +204,12 @@ def launch(model_params, checkpoint_path, device='cuda'):
             model_input += ' [P0] ' + user_prompt + ' [SEP] [P1] '
 
             encoded = tokenizer.encode(model_input)
+
             input_ids = encoded.ids
+
+            if len(input_ids) > model.bptt:
+                input_ids = input_ids[-model.bptt:]
+
             input_ids = torch.LongTensor(input_ids).unsqueeze(0)
             input_ids = input_ids.to(device)
 

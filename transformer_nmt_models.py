@@ -36,7 +36,7 @@ class TransformerSeq2Seq(nn.Module):
         bptt=256,
         **kwargs
     ):
-        super(TransformerModel, self).__init__()
+        super(TransformerSeq2Seq, self).__init__()
         from torch.nn import \
             Transformer, \
             TransformerEncoder, \
@@ -54,7 +54,7 @@ class TransformerSeq2Seq(nn.Module):
         decoder_layers = TransformerDecoderLayer(ninp, nhead, nhid, dropout)
         self.transformer_decoder = TransformerDecoder(decoder_layers, nlayers)
 
-        self.transformer = Transformer(nhid, nhead, \
+        self.transformer = Transformer(ninp, nhead, \
             custom_encoder=self.transformer_encoder, \
             custom_decoder=self.transformer_decoder
         )
@@ -62,11 +62,18 @@ class TransformerSeq2Seq(nn.Module):
         self.encoder = nn.Embedding(ntoken, ninp)
         self.ninp = ninp
         self.decoder = nn.Linear(ninp, ntoken)
+        self.nopeek_mask = None
 
         self.init_weights()
 
     def _create_mask(self, input_lengths):
-        return torch.arange(self.bptt).unsqueeze(0).cuda() >= input_lengths.unsqueeze(1)
+        return (torch.arange(self.bptt).unsqueeze(0).to(input_lengths.device) >= input_lengths.unsqueeze(1))
+
+    def _create_nopeek_mask(self, length, device):
+        mask = (torch.triu(torch.ones(length, length)) == 1).t()
+        mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
+        mask = mask.to(device)
+        return mask
 
     def init_weights(self):
         initrange = 0.1
@@ -74,18 +81,21 @@ class TransformerSeq2Seq(nn.Module):
         self.decoder.bias.data.zero_()
         self.decoder.weight.data.uniform_(-initrange, initrange)
 
-    def forward(self, src, src_len, trg, trg_len=None, **kwargs):
-        src_mask = self._create_mask(src_len)
-        trg_mask = None
-        if trg_len is not None:
-            trg_mask = self._create_mask(trg_len)
+    def forward(self, src, src_len, trg, trg_mask=None, trg_key_padding_mask=None, **kwargs):
+        src_key_mask = self._create_mask(src_len)
+        trg_key_mask = trg_key_padding_mask
 
         src = self.encoder(src) * math.sqrt(self.ninp)
         src = self.pos_encoder(src)
 
-        output = self.transformer(src, \
-            src_key_padding_mask=src_mask, \
-            tgt_key_padding_mask=trg_mask
+        trg = self.encoder(trg) * math.sqrt(self.ninp)
+        trg = self.pos_encoder(trg)
+
+        output = self.transformer(src, trg, \
+            tgt_mask=trg_mask, \
+            src_key_padding_mask=src_key_mask, \
+            tgt_key_padding_mask=trg_key_mask, \
+            memory_key_padding_mask=src_key_mask.clone()
         )
 
         return self.decoder(output)

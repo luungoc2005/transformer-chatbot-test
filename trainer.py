@@ -102,14 +102,30 @@ class LanguageModelTrainer(pl.LightningModule):
         src_length = src_length.squeeze(1)
         trg_length = trg_length.squeeze(1)
 
-        output = self.forward(src, src_length, trg, trg_length=trg_length)
+        if self.model_type == 'lstm':
+            output = self.forward(src, src_length, trg, trg_length=trg_length)
 
-        output_dim = output.shape[-1]
-        loss = F.cross_entropy(
-            output[1:].reshape(-1, output_dim), 
-            trg[1:].reshape(-1),
-            ignore_index=self.pad_index
-        )
+            output_dim = output.shape[-1]
+            loss = F.cross_entropy(
+                output[1:].reshape(-1, output_dim), 
+                trg[1:].reshape(-1),
+                ignore_index=self.pad_index
+            )
+        else:
+            trg_inp, trg_out = trg[:-1], trg[1:]
+            trg_key_mask = self.model._create_mask(trg_length)[:,:-1]
+            trg_nopeek_mask = self.model._create_nopeek_mask(trg_inp.size(0), trg_inp.device)
+
+            output = self.forward(src, src_length, trg_inp, \
+                trg_mask=trg_nopeek_mask,
+                trg_key_padding_mask=trg_key_mask)
+
+            output_dim = output.shape[-1]
+            loss = F.cross_entropy(
+                output.reshape(-1, output_dim), 
+                trg_out.reshape(-1),
+                ignore_index=self.pad_index
+            )
 
         tensorboard_logs = {
             'train_loss': loss,
@@ -124,15 +140,32 @@ class LanguageModelTrainer(pl.LightningModule):
         src = src.t()
         trg = trg.t()
         src_length = src_length.squeeze(1)
+        trg_length = trg_length.squeeze(1)
 
-        output = self.forward(src, src_length, trg, teacher_forcing_ratio=0)
-        
-        output_dim = output.shape[-1]
-        loss = F.cross_entropy(
-            output[1:].reshape(-1, output_dim), 
-            trg[1:].reshape(-1),
-            ignore_index=self.pad_index
-        )
+        if self.model_type == 'lstm':
+            output = self.forward(src, src_length, trg, trg_length=trg_length)
+
+            output_dim = output.shape[-1]
+            loss = F.cross_entropy(
+                output[1:].reshape(-1, output_dim), 
+                trg[1:].reshape(-1),
+                ignore_index=self.pad_index
+            )
+        else:
+            trg_inp, trg_out = trg[:-1], trg[1:]
+            trg_key_mask = self.model._create_mask(trg_length)[:,:-1]
+            trg_nopeek_mask = self.model._create_nopeek_mask(trg_inp.size(0), trg_inp.device)
+
+            output = self.forward(src, src_length, trg_inp, \
+                trg_mask=trg_nopeek_mask,
+                trg_key_padding_mask=trg_key_mask)
+
+            output_dim = output.size(-1)
+            loss = F.cross_entropy(
+                output.reshape(-1, output_dim), 
+                trg_out.reshape(-1),
+                ignore_index=self.pad_index
+            )
 
         ppl = torch.exp(loss)
 
@@ -192,7 +225,7 @@ class LanguageModelTrainer(pl.LightningModule):
     def train_dataloader(self):
         return DataLoader(
             LMCorpusDataset(
-                split_name='train',
+                split_name='val',
                 pad_idx=self.pad_index,
                 bptt=self.bptt
             ),
@@ -204,7 +237,7 @@ class LanguageModelTrainer(pl.LightningModule):
     def val_dataloader(self):
         return DataLoader(
             LMCorpusDataset(
-                split_name='val',
+                split_name='test',
                 pad_idx=self.pad_index,
                 bptt=self.bptt
             ),

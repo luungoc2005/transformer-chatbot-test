@@ -25,17 +25,17 @@ if __name__ == "__main__":
 
     config = DotDict({
         'model_type': 'transformer',
-        'ninp': 128,
-        'nhid': 512,
-        'nlayers': 4,
-        'nhead': 4,
+        'ninp': 256,
+        'nhid': 1024,
+        'nlayers': 6,
+        'nhead': 8,
         'dropout': 0.1,
         'tie_encoder_decoder': False,
-        'lr': 5e-4,
-        'num_warmup_steps': 0,
-        'batch_size': 128,
+        'lr': 3e-4,
+        'num_warmup_steps': 8000,
+        'batch_size': 64,
         'accumulate_grad_batches': 1,
-        'bptt': 128
+        'bptt': 160
     })
 
     if path.exists('.comet.config'):

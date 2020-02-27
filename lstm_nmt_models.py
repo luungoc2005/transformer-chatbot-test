@@ -255,6 +255,7 @@ class LSTMSeq2Seq(nn.Module):
         tie_encoder_decoder=True,
         dropout=0.4,
         src_pad_idx=0,
+        bptt=80,
         **kwargs
     ):
 
@@ -262,6 +263,7 @@ class LSTMSeq2Seq(nn.Module):
         self.model_type = 'LSTM'
 
         self.src_pad_idx = src_pad_idx
+        self.bptt = bptt
 
         self.encoder = LSTMEncoder(ntoken, ninp, nhid, nhid, nlayers, dropout)
         self.attn = Attention(nhid, nhid)

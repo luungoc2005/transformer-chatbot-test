@@ -76,7 +76,7 @@ class RedditCorpus(object):
                     output_ids.extend([p0_token] + tokenizer.encode(example['response']).ids + [sep_token])
             
                     input_ids = torch.LongTensor(input_ids)
-                    output_ids = torch.LongTensor(input_ids)
+                    output_ids = torch.LongTensor(output_ids)
 
                     self.all_examples.append((input_ids, output_ids))
 
