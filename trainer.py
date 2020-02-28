@@ -195,12 +195,22 @@ class LanguageModelTrainer(pl.LightningModule):
             'val_ppl': ppl
         }
 
+        if batch_idx % 10000 == 0: # sanity check every 10k epochs
+            first_output = torch.max(output[:,0,:].squeeze(1), dim=-1)[1].t()
+            src = truncate_sequence(src.cpu().t()[0].tolist(), self.pad_index)
+            trg = truncate_sequence(trg.cpu().t()[0].tolist(), self.pad_index)
+            first_output = truncate_sequence(first_output.cpu().tolist(), self.pad_index)
+
+            print()
+            print('Source: ' + self._tokenizer.decode(src, skip_special_tokens=False))
+            print('Target: ' + self._tokenizer.decode(trg, skip_special_tokens=False))
+            print('Predicted: ' + self._tokenizer.decode(first_output, skip_special_tokens=False))
+            print()
+
         return {
             'val_loss': loss, 
             'val_ppl': ppl, 
-            'log': tensorboard_logs,
-            'batch_first_item': ((src.cpu().t()[0], src_length.cpu()[0]), (trg.cpu().t()[0], trg_length.cpu()[0])),
-            'batch_first_outputs': output.cpu()[:,0,:].squeeze(1).t()
+            'log': tensorboard_logs
         }
 
 
@@ -209,20 +219,6 @@ class LanguageModelTrainer(pl.LightningModule):
         avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
         avg_ppl = torch.stack([x['val_ppl'] for x in outputs]).mean()
         tensorboard_logs = {'val_loss': avg_loss, 'val_ppl': avg_ppl}
-
-        # Sanity check every epoch
-        (src, src_length), (trg, trg_length) = outputs[0]['batch_first_item']
-        first_output = outputs[0]['batch_first_outputs']
-        first_output = torch.max(first_output, dim=-1)[1]
-
-        src = truncate_sequence(src.cpu().tolist(), self.pad_index)
-        trg = truncate_sequence(trg.cpu().tolist(), self.pad_index)
-        first_output = truncate_sequence(first_output.cpu().tolist(), self.pad_index)
-
-        print()
-        print('Source: ' + self._tokenizer.decode(src, skip_special_tokens=False))
-        print('Target: ' + self._tokenizer.decode(trg, skip_special_tokens=False))
-        print('Predicted: ' + self._tokenizer.decode(first_output, skip_special_tokens=False))
 
         return {'avg_val_loss': avg_loss, 'log': tensorboard_logs}
 
@@ -268,7 +264,7 @@ class LanguageModelTrainer(pl.LightningModule):
     def train_dataloader(self):
         return DataLoader(
             LMCorpusDataset(
-                split_name='val',
+                split_name='train',
                 pad_idx=self.pad_index,
                 bptt=self.bptt
             ),
@@ -280,7 +276,7 @@ class LanguageModelTrainer(pl.LightningModule):
     def val_dataloader(self):
         return DataLoader(
             LMCorpusDataset(
-                split_name='test',
+                split_name='val',
                 pad_idx=self.pad_index,
                 bptt=self.bptt
             ),

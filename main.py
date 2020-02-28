@@ -25,15 +25,16 @@ if __name__ == "__main__":
 
     config = DotDict({
         'model_type': 'transformer',
-        'ninp': 256,
-        'nhid': 1024,
-        'nlayers': 3,
-        'nhead': 4,
+        'ninp': 512,
+        'nhid': 2048,
+        'nlayers': 6,
+        'nhead': 8,
         'dropout': 0.1,
         'tie_encoder_decoder': False,
-        'lr': 5e-4,
-        'num_warmup_steps': 8000,
-        'batch_size': 144,
+        'tie_layers': True,
+        'lr': 3e-4,
+        'num_warmup_steps': 32000,
+        'batch_size': 48,
         'accumulate_grad_batches': 3,
         'bptt': 160
     })

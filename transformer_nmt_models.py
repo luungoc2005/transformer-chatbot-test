@@ -8,6 +8,101 @@ import torch.nn.functional as F
 from torch.utils.checkpoint import checkpoint
 
 
+# https://pytorch.org/docs/stable/_modules/torch/nn/modules/transformer.html
+class TiedTransformerEncoder(nn.Module):
+    r"""TransformerEncoder is a stack of N encoder layers
+    "Tied": ALBERT-like sharing of parameters across layers
+
+    Args:
+        encoder_layer: an instance of the TransformerEncoderLayer() class (required).
+        num_layers: the number of sub-encoder-layers in the encoder (required).
+        norm: the layer normalization component (optional).
+
+    Examples::
+        >>> encoder_layer = nn.TransformerEncoderLayer(d_model=512, nhead=8)
+        >>> transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=6)
+        >>> src = torch.rand(10, 32, 512)
+        >>> out = transformer_encoder(src)
+    """
+
+    def __init__(self, encoder_layer, num_layers, norm=None):
+        super(TiedTransformerEncoder, self).__init__()
+        self.layer = encoder_layer
+        self.num_layers = num_layers
+        self.norm = norm
+
+    def forward(self, src, mask=None, src_key_padding_mask=None):
+            r"""Pass the input through the encoder layers in turn.
+
+            Args:
+                src: the sequnce to the encoder (required).
+                mask: the mask for the src sequence (optional).
+                src_key_padding_mask: the mask for the src keys per batch (optional).
+
+            Shape:
+                see the docs in Transformer class.
+            """
+            output = src
+
+            for i in range(self.num_layers):
+                output = self.layer(output, src_mask=mask,
+                    src_key_padding_mask=src_key_padding_mask)
+
+            if self.norm:
+                output = self.norm(output)
+
+            return output
+
+class TiedTransformerDecoder(nn.Module):
+    r"""TransformerDecoder is a stack of N decoder layers
+
+    Args:
+        decoder_layer: an instance of the TransformerDecoderLayer() class (required).
+        num_layers: the number of sub-decoder-layers in the decoder (required).
+        norm: the layer normalization component (optional).
+
+    Examples::
+        >>> decoder_layer = nn.TransformerDecoderLayer(d_model=512, nhead=8)
+        >>> transformer_decoder = nn.TransformerDecoder(decoder_layer, num_layers=6)
+        >>> memory = torch.rand(10, 32, 512)
+        >>> tgt = torch.rand(20, 32, 512)
+        >>> out = transformer_decoder(tgt, memory)
+    """
+
+    def __init__(self, decoder_layer, num_layers, norm=None):
+        super(TiedTransformerDecoder, self).__init__()
+        self.layer = decoder_layer
+        self.num_layers = num_layers
+        self.norm = norm
+
+    def forward(self, tgt, memory, tgt_mask=None,
+                memory_mask=None, tgt_key_padding_mask=None,
+                memory_key_padding_mask=None):
+        r"""Pass the inputs (and mask) through the decoder layer in turn.
+
+        Args:
+            tgt: the sequence to the decoder (required).
+            memory: the sequnce from the last layer of the encoder (required).
+            tgt_mask: the mask for the tgt sequence (optional).
+            memory_mask: the mask for the memory sequence (optional).
+            tgt_key_padding_mask: the mask for the tgt keys per batch (optional).
+            memory_key_padding_mask: the mask for the memory keys per batch (optional).
+
+        Shape:
+            see the docs in Transformer class.
+        """
+        output = tgt
+
+        for i in range(self.num_layers):
+            output = self.layer(output, memory, tgt_mask=tgt_mask,
+                memory_mask=memory_mask,
+                tgt_key_padding_mask=tgt_key_padding_mask,
+                memory_key_padding_mask=memory_key_padding_mask)
+
+        if self.norm:
+            output = self.norm(output)
+
+        return output
 
 class PositionalEncoding(nn.Module):
 
@@ -32,6 +127,7 @@ class TransformerSeq2Seq(nn.Module):
 
     def __init__(self, ntoken, ninp, nhid, nhead, nlayers,
         tie_encoder_decoder=True,
+        tie_layers=True,
         dropout=0.1,
         bptt=256,
         **kwargs
@@ -49,10 +145,14 @@ class TransformerSeq2Seq(nn.Module):
         self.pos_encoder = PositionalEncoding(ninp, dropout, max_len=self.bptt)
 
         encoder_layers = TransformerEncoderLayer(ninp, nhead, nhid, dropout)
-        self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
+        self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers) \
+            if not tie_layers \
+            else TiedTransformerEncoder(encoder_layers, nlayers)
 
         decoder_layers = TransformerDecoderLayer(ninp, nhead, nhid, dropout)
-        self.transformer_decoder = TransformerDecoder(decoder_layers, nlayers)
+        self.transformer_decoder = TransformerDecoder(decoder_layers, nlayers) \
+            if not tie_layers \
+            else TiedTransformerDecoder(decoder_layers, nlayers)
 
         self.transformer = Transformer(ninp, nhead, \
             custom_encoder=self.transformer_encoder, \
