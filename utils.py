@@ -20,3 +20,14 @@ def get_default_tokenizer():
     tokenizer.add_special_tokens(special_tokens)
 
     return tokenizer
+
+def set_random_seed():
+    import torch
+    import random
+    
+    RANDOM_SEED = 42
+    random.seed(RANDOM_SEED)
+    torch.manual_seed(RANDOM_SEED)
+
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(RANDOM_SEED)

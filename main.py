@@ -7,6 +7,8 @@ if __name__ == "__main__":
     from utils import DotDict
     from os import path
 
+    import random
+
     # config = DotDict({
     #     'model_type': 'transformer',
     #     'ninp': 256, 
@@ -25,17 +27,19 @@ if __name__ == "__main__":
 
     config = DotDict({
         'model_type': 'transformer',
-        'ninp': 512,
-        'nhid': 2048,
-        'nlayers': 6,
-        'nhead': 8,
+        'emb_size': 128,
+        'ninp': 768,
+        'nhid': 3072,
+        'nlayers': 8,
+        'nhead': 12,
         'dropout': 0.1,
         'tie_encoder_decoder': False,
         'tie_layers': True,
         'lr': 3e-4,
-        'num_warmup_steps': 32000,
-        'batch_size': 48,
-        'accumulate_grad_batches': 3,
+        'min_lr': 5e-5,
+        'num_warmup_steps': 16000,
+        'batch_size': 32,
+        'accumulate_grad_batches': 4,
         'bptt': 160
     })
 
@@ -61,7 +65,7 @@ if __name__ == "__main__":
     model = LanguageModelTrainer(config)
 
     trainer = Trainer(
-        gradient_clip_val=.5,
+        gradient_clip_val=1.0,
         gpus=1,
         use_amp=True,
         accumulate_grad_batches=config.get('accumulate_grad_batches', 1),

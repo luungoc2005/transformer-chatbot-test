@@ -251,7 +251,7 @@ class Seq2Seq(nn.Module):
 
 class LSTMSeq2Seq(nn.Module):
 
-    def __init__(self, ntoken, ninp, nhid, nlayers,
+    def __init__(self, ntoken, emb_size, ninp, nhid, nlayers,
         tie_encoder_decoder=True,
         dropout=0.4,
         src_pad_idx=0,
@@ -296,7 +296,7 @@ class LSTMSeq2Seq(nn.Module):
         #encoder_outputs is all hidden states of the input sequence, back and forwards
         #hidden is the final forward and backward hidden states, passed through a linear layer
         encoder_outputs, hidden = self.encoder(src, src_len)
-                
+
         #first input to the decoder is the <sos> tokens
         input = trg[0,:]
         

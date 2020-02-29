@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader, Dataset
 
 import pytorch_lightning as pl
 
-from utils import DotDict
+from utils import DotDict, set_random_seed
 
 # from models import TransformerModel, LSTMModel
 from lstm_nmt_models import LSTMSeq2Seq
@@ -18,6 +18,7 @@ from data import RedditCorpus
 from cross_entropy import CrossEntropyLoss
 
 SAVE_PATH = './models/'
+set_random_seed()
 
 def save_model(model, hparams):
     from os import path
@@ -102,6 +103,7 @@ class LanguageModelTrainer(pl.LightningModule):
         
         self.batch_size = hparams.get('batch_size', 64)
         self.bptt = hparams.get('bptt', 128)
+
         self.criterion = CrossEntropyLoss(ignore_index=self.pad_index, smooth_eps=.1)
 
     def forward(self, x, x_length, y, **kwargs):
@@ -245,9 +247,10 @@ class LanguageModelTrainer(pl.LightningModule):
 
         if batch_nb % accumulate_grad_batches == 0 and num_warmup_steps > 0:
             if self.scheduler is None:
+                min_rate = self.hparams.get('min_lr', 0) / self.hparams.get('lr', 3e-4)
                 def lr_lambda(current_step):
                     if current_step < num_warmup_steps:
-                        return float(current_step) / float(max(1.0, num_warmup_steps))
+                        return max(min_rate, float(current_step) / float(max(1.0, num_warmup_steps)))
                     else:
                         # return 1
                         # decay

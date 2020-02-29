@@ -125,7 +125,7 @@ class PositionalEncoding(nn.Module):
 
 class TransformerSeq2Seq(nn.Module):
 
-    def __init__(self, ntoken, ninp, nhid, nhead, nlayers,
+    def __init__(self, ntoken, emb_size, ninp, nhid, nhead, nlayers,
         tie_encoder_decoder=True,
         tie_layers=True,
         dropout=0.1,
@@ -142,7 +142,10 @@ class TransformerSeq2Seq(nn.Module):
         self.model_type = 'Transformer'
         self.bptt = bptt
 
-        self.pos_encoder = PositionalEncoding(ninp, dropout, max_len=self.bptt)
+        self.pos_encoder = PositionalEncoding(emb_size, dropout, max_len=self.bptt)
+        self.encoder = nn.Embedding(ntoken, emb_size)
+
+        self.emb_linear = nn.Linear(emb_size, ninp)
 
         encoder_layers = TransformerEncoderLayer(ninp, nhead, nhid, dropout)
         self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers) \
@@ -159,9 +162,9 @@ class TransformerSeq2Seq(nn.Module):
             custom_decoder=self.transformer_decoder
         )
 
-        self.encoder = nn.Embedding(ntoken, ninp)
         self.ninp = ninp
-        self.decoder = nn.Linear(ninp, ntoken)
+        self.dec_linear = nn.Linear(ninp, emb_size)
+        self.decoder = nn.Linear(emb_size, ntoken)
         self.nopeek_mask = None
 
         self.init_weights()
@@ -187,9 +190,11 @@ class TransformerSeq2Seq(nn.Module):
 
         src = self.encoder(src) * math.sqrt(self.ninp)
         src = self.pos_encoder(src)
+        src = self.emb_linear(src)
 
         trg = self.encoder(trg) * math.sqrt(self.ninp)
         trg = self.pos_encoder(trg)
+        trg = self.emb_linear(trg)
 
         output = self.transformer(src, trg, \
             tgt_mask=trg_mask, \
@@ -197,5 +202,7 @@ class TransformerSeq2Seq(nn.Module):
             tgt_key_padding_mask=trg_key_mask, \
             memory_key_padding_mask=src_key_mask.clone()
         )
+
+        output = self.dec_linear(output)
 
         return self.decoder(output)
