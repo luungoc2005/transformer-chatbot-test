@@ -141,4 +141,6 @@ data/*.pt
 
 .comet.config
 
+*.ckpt
+
 *.pt

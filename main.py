@@ -30,17 +30,19 @@ if __name__ == "__main__":
         'emb_size': 128,
         'ninp': 768,
         'nhid': 3072,
-        'nlayers': 8,
+        'nlayers': 6,
         'nhead': 12,
         'dropout': 0.1,
         'tie_encoder_decoder': False,
         'tie_layers': True,
-        'lr': 3e-4,
-        'min_lr': 5e-5,
-        'num_warmup_steps': 16000,
-        'batch_size': 32,
-        'accumulate_grad_batches': 4,
-        'bptt': 160
+        'lr': 5e-3,
+        'min_lr': 0,
+        'adam_eps': 1e-6,
+        'num_warmup_steps': 3125,
+        'weight_decay': .01,
+        'batch_size': 64,
+        'accumulate_grad_batches': 8,
+        'bptt': 128
     })
 
     if path.exists('.comet.config'):

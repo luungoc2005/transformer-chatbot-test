@@ -123,6 +123,33 @@ class PositionalEncoding(nn.Module):
         return self.dropout(x)
 
 
+class TransformerEmbeddings(nn.Module):
+
+    def __init__(self, ntoken, emb_size, ninp, max_len=5000):
+        super(TransformerEmbeddings, self).__init__()
+
+        self.ninp = ninp
+        
+        # self.pos_encoder = PositionalEncoding(emb_size, dropout, max_len=max_len)
+        self.pos_emb = nn.Embedding(max_len, emb_size)
+        self.encoder = nn.Embedding(ntoken, emb_size)
+        self.emb_norm = nn.LayerNorm(emb_size)
+
+        self.emb_linear = nn.Linear(emb_size, ninp)
+
+    def forward(self, x):
+        # x = self.encoder(x) * math.sqrt(self.ninp)
+        # x = self.pos_encoder(x)
+        seq_length = x.size(0)
+        position_ids = torch.arange(seq_length, dtype=torch.long, device=x.device)
+        position_ids = position_ids.unsqueeze(1).expand(x.size())
+
+        x = self.encoder(x) + self.pos_emb(position_ids)
+        x = self.emb_norm(x)
+        x = self.emb_linear(x)
+
+        return x
+
 class TransformerSeq2Seq(nn.Module):
 
     def __init__(self, ntoken, emb_size, ninp, nhid, nhead, nlayers,
@@ -130,6 +157,7 @@ class TransformerSeq2Seq(nn.Module):
         tie_layers=True,
         dropout=0.1,
         bptt=256,
+        initializer_range=.02,
         **kwargs
     ):
         super(TransformerSeq2Seq, self).__init__()
@@ -141,33 +169,45 @@ class TransformerSeq2Seq(nn.Module):
             TransformerDecoderLayer
         self.model_type = 'Transformer'
         self.bptt = bptt
+        self.initializer_range = initializer_range
 
-        self.pos_encoder = PositionalEncoding(emb_size, dropout, max_len=self.bptt)
-        self.encoder = nn.Embedding(ntoken, emb_size)
+        self.embedding = TransformerEmbeddings(ntoken, emb_size, ninp, max_len=self.bptt)
 
-        self.emb_linear = nn.Linear(emb_size, ninp)
-
-        encoder_layers = TransformerEncoderLayer(ninp, nhead, nhid, dropout)
+        encoder_layers = TransformerEncoderLayer(ninp, nhead, nhid, dropout, activation='gelu')
         self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers) \
             if not tie_layers \
             else TiedTransformerEncoder(encoder_layers, nlayers)
 
-        decoder_layers = TransformerDecoderLayer(ninp, nhead, nhid, dropout)
+        decoder_layers = TransformerDecoderLayer(ninp, nhead, nhid, dropout, activation='gelu')
         self.transformer_decoder = TransformerDecoder(decoder_layers, nlayers) \
             if not tie_layers \
             else TiedTransformerDecoder(decoder_layers, nlayers)
 
         self.transformer = Transformer(ninp, nhead, \
             custom_encoder=self.transformer_encoder, \
-            custom_decoder=self.transformer_decoder
+            custom_decoder=self.transformer_decoder, \
+            dropout=dropout,
+            activation='gelu'
         )
 
         self.ninp = ninp
         self.dec_linear = nn.Linear(ninp, emb_size)
-        self.decoder = nn.Linear(emb_size, ntoken)
+        self.dec_norm = nn.LayerNorm(emb_size)
+        self.decoder = nn.Linear(emb_size, ntoken, bias=False)
         self.nopeek_mask = None
+        self.apply(self._init_weights)
 
-        self.init_weights()
+    def _init_weights(self, module):
+        """ Initialize the weights """
+        if isinstance(module, (nn.Linear, nn.Embedding)):
+            # Slightly different from the TF version which uses truncated_normal for initialization
+            # cf https://github.com/pytorch/pytorch/pull/5617
+            module.weight.data.normal_(mean=0.0, std=self.initializer_range)
+        elif isinstance(module, nn.LayerNorm):
+            module.bias.data.zero_()
+            module.weight.data.fill_(1.0)
+        if isinstance(module, nn.Linear) and module.bias is not None:
+            module.bias.data.zero_()
 
     def _create_mask(self, input_lengths):
         return (torch.arange(self.bptt).unsqueeze(0).to(input_lengths.device) >= input_lengths.unsqueeze(1))
@@ -178,23 +218,12 @@ class TransformerSeq2Seq(nn.Module):
         mask = mask.to(device)
         return mask
 
-    def init_weights(self):
-        initrange = 0.1
-        self.encoder.weight.data.uniform_(-initrange, initrange)
-        self.decoder.bias.data.zero_()
-        self.decoder.weight.data.uniform_(-initrange, initrange)
-
     def forward(self, src, src_len, trg, trg_mask=None, trg_key_padding_mask=None, **kwargs):
         src_key_mask = self._create_mask(src_len)
         trg_key_mask = trg_key_padding_mask
 
-        src = self.encoder(src) * math.sqrt(self.ninp)
-        src = self.pos_encoder(src)
-        src = self.emb_linear(src)
-
-        trg = self.encoder(trg) * math.sqrt(self.ninp)
-        trg = self.pos_encoder(trg)
-        trg = self.emb_linear(trg)
+        src = self.embedding(src)
+        trg = self.embedding(trg)
 
         output = self.transformer(src, trg, \
             tgt_mask=trg_mask, \
@@ -204,5 +233,7 @@ class TransformerSeq2Seq(nn.Module):
         )
 
         output = self.dec_linear(output)
+        output = F.gelu(output)
+        output = self.dec_norm(output)
 
         return self.decoder(output)

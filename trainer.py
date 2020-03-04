@@ -17,6 +17,8 @@ from data import RedditCorpus
 
 from cross_entropy import CrossEntropyLoss
 
+# from nltk.translate.bleu_score import sentence_bleu
+
 SAVE_PATH = './models/'
 set_random_seed()
 
@@ -152,7 +154,8 @@ class LanguageModelTrainer(pl.LightningModule):
 
         tensorboard_logs = {
             'train_loss': loss,
-            'ppl': torch.exp(loss)
+            'ppl': torch.exp(loss),
+            'lr': self.last_lr
         }
 
         return {'loss': loss, 'log': tensorboard_logs}
@@ -192,11 +195,6 @@ class LanguageModelTrainer(pl.LightningModule):
 
         ppl = torch.exp(loss)
 
-        tensorboard_logs = {
-            'val_loss': loss,
-            'val_ppl': ppl
-        }
-
         if batch_idx % 10000 == 0: # sanity check every 10k epochs
             first_output = torch.max(output[:,0,:].squeeze(1), dim=-1)[1].t()
             src = truncate_sequence(src.cpu().t()[0].tolist(), self.pad_index)
@@ -208,6 +206,11 @@ class LanguageModelTrainer(pl.LightningModule):
             print('Target: ' + self._tokenizer.decode(trg, skip_special_tokens=False))
             print('Predicted: ' + self._tokenizer.decode(first_output, skip_special_tokens=False))
             print()
+
+        tensorboard_logs = {
+            'val_loss': loss,
+            'val_ppl': ppl
+        }
 
         return {
             'val_loss': loss, 
@@ -226,39 +229,57 @@ class LanguageModelTrainer(pl.LightningModule):
 
 
     def configure_optimizers(self):
-        from radam import RAdam
+        # from radam import RAdam
+        from lamb import Lamb
 
-        optimizer = RAdam(self.parameters(), 
-            lr=self.hparams.get('lr', 3e-4),
+        weight_decay = self.hparams.get('weight_decay', .01)
+        no_decay = ["bias", "LayerNorm.weight"]
+        optimizer_grouped_parameters = [
+            {
+                "params": [p for n, p in self.named_parameters() if not any(nd in n for nd in no_decay)],
+                "weight_decay": weight_decay,
+            },
+            {
+                "params": [p for n, p in self.named_parameters() if any(nd in n for nd in no_decay)], 
+                "weight_decay": 0.0
+            },
+        ]
+
+        self.last_lr = self.hparams.get('lr', 3e-4)
+        self.current_step = 1
+        optimizer = Lamb(optimizer_grouped_parameters, 
+            lr=self.last_lr,
             betas=(0.9, 0.980),
-            eps=1e-9
+            eps=self.hparams.get('adam_eps', 1e-9)
         )
-
-        self.scheduler = None
 
         return optimizer
 
     def optimizer_step(self, current_epoch, batch_nb, optimizer, optimizer_i, second_order_closure=None):
-        optimizer.step()
-        optimizer.zero_grad()
 
         num_warmup_steps=self.hparams.get('num_warmup_steps', 10000)
-        accumulate_grad_batches=self.hparams.get('accumulate_grad_batches', 1)
+        min_rate = self.hparams.get('min_lr', 0) / self.hparams.get('lr', 3e-4)
+        accumulate_grad_batches = self.hparams.get('accumulate_grad_batches', 1)
+        current_step = self.current_step // accumulate_grad_batches
 
-        if batch_nb % accumulate_grad_batches == 0 and num_warmup_steps > 0:
-            if self.scheduler is None:
-                min_rate = self.hparams.get('min_lr', 0) / self.hparams.get('lr', 3e-4)
-                def lr_lambda(current_step):
-                    if current_step < num_warmup_steps:
-                        return max(min_rate, float(current_step) / float(max(1.0, num_warmup_steps)))
-                    else:
-                        # return 1
-                        # decay
-                        return num_warmup_steps ** .5 * current_step ** -0.5
+        if num_warmup_steps > 0:
+            lr_scale = 0
+            if current_step < num_warmup_steps:
+                rate = min_rate + (float(current_step) / \
+                    float(max(1.0, num_warmup_steps - min_rate * num_warmup_steps)))
+                lr_scale = min(rate, 1.0)
+            else:
+                lr_scale = 1
+                # sqrt decay
+                # lr_scale = num_warmup_steps ** .5 * current_step ** -0.5
 
-                self.scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda, last_epoch=-1)
+            self.last_lr = lr_scale * self.hparams.get('lr', 3e-4)
+            for pg in optimizer.param_groups:
+                pg['lr'] = self.last_lr
 
-            self.scheduler.step()
+        self.current_step += 1
+        optimizer.step()
+        optimizer.zero_grad()
 
         if batch_nb % 5000 == 0: # save every 5000 steps
             save_model(self.model, self.hparams)
