@@ -114,10 +114,12 @@ def launch(model_params, checkpoint_path, device='cuda'):
     else:
         model = LSTMSeq2Seq(ntoken=vocab_size, src_pad_idx=pad_token, **model_params)
     
-    if checkpoint_path and path.exists(checkpoint_path):
+    if isinstance(checkpoint_path, str) and path.exists(checkpoint_path):
         print(f'Loading checkpoint from {checkpoint_path}')
         checkpoint_state = torch.load(checkpoint_path, map_location=lambda storage, loc: storage)
         model.load_state_dict(checkpoint_state)
+    else:
+        model.load_state_dict(checkpoint_path)
 
     model = model.to(device)
 
@@ -242,11 +244,17 @@ def launch(model_params, checkpoint_path, device='cuda'):
             print('Bot: ' + response)
 
 if __name__ == '__main__':
-    params_path = './models/model_params.json'
-    checkpoint_path = './models/model_state.pt'
+    # params_path = './models/model_params.json'
+    # checkpoint_path = './models/model_state.pt'
 
-    import json
-    with open(params_path, 'r') as params_fp:
-        model_params = json.load(params_fp)
+    # import json
+    # with open(params_path, 'r') as params_fp:
+    #     model_params = json.load(params_fp)
+    # launch(model_params, checkpoint_path, device='cpu')
     
-    launch(model_params, checkpoint_path, device='cpu')
+    from main import config
+    default_config = config
+    checkpoint_state = torch.load('./checkpoints/_ckpt_epoch_2.ckpt', map_location=lambda storage, loc: storage)
+    default_config.update(checkpoint_state['hparams'])
+
+    launch(default_config, checkpoint_state['state_dict'])

@@ -125,17 +125,15 @@ class PositionalEncoding(nn.Module):
 
 class TransformerEmbeddings(nn.Module):
 
-    def __init__(self, ntoken, emb_size, ninp, max_len=5000):
+    def __init__(self, ntoken, ninp, max_len=5000):
         super(TransformerEmbeddings, self).__init__()
 
         self.ninp = ninp
         
         # self.pos_encoder = PositionalEncoding(emb_size, dropout, max_len=max_len)
-        self.pos_emb = nn.Embedding(max_len, emb_size)
-        self.encoder = nn.Embedding(ntoken, emb_size)
-        self.emb_norm = nn.LayerNorm(emb_size)
-
-        self.emb_linear = nn.Linear(emb_size, ninp)
+        self.pos_emb = nn.Embedding(max_len, ninp)
+        self.encoder = nn.Embedding(ntoken, ninp)
+        self.emb_norm = nn.LayerNorm(ninp)
 
     def forward(self, x):
         # x = self.encoder(x) * math.sqrt(self.ninp)
@@ -146,13 +144,12 @@ class TransformerEmbeddings(nn.Module):
 
         x = self.encoder(x) + self.pos_emb(position_ids)
         x = self.emb_norm(x)
-        x = self.emb_linear(x)
 
         return x
 
 class TransformerSeq2Seq(nn.Module):
 
-    def __init__(self, ntoken, emb_size, ninp, nhid, nhead, nlayers,
+    def __init__(self, ntoken, ninp, nhid, nhead, nlayers,
         tie_encoder_decoder=True,
         tie_layers=True,
         dropout=0.1,
@@ -171,7 +168,7 @@ class TransformerSeq2Seq(nn.Module):
         self.bptt = bptt
         self.initializer_range = initializer_range
 
-        self.embedding = TransformerEmbeddings(ntoken, emb_size, ninp, max_len=self.bptt)
+        self.embedding = TransformerEmbeddings(ntoken, ninp, max_len=self.bptt)
 
         encoder_layers = TransformerEncoderLayer(ninp, nhead, nhid, dropout, activation='gelu')
         self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers) \
@@ -191,9 +188,8 @@ class TransformerSeq2Seq(nn.Module):
         )
 
         self.ninp = ninp
-        self.dec_linear = nn.Linear(ninp, emb_size)
-        self.dec_norm = nn.LayerNorm(emb_size)
-        self.decoder = nn.Linear(emb_size, ntoken, bias=False)
+        self.dec_norm = nn.LayerNorm(ninp)
+        self.decoder = nn.Linear(ninp, ntoken, bias=False)
         self.nopeek_mask = None
         self.apply(self._init_weights)
 
@@ -232,7 +228,6 @@ class TransformerSeq2Seq(nn.Module):
             memory_key_padding_mask=src_key_mask.clone()
         )
 
-        output = self.dec_linear(output)
         output = F.gelu(output)
         output = self.dec_norm(output)
 

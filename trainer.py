@@ -23,11 +23,20 @@ SAVE_PATH = './models/'
 set_random_seed()
 
 def save_model(model, hparams):
-    from os import path
+    from os import path, remove
     import json
+
+    print('Saving intermediate model')
 
     model_path = path.join(SAVE_PATH, 'model_state.pt')
     config_path = path.join(SAVE_PATH, 'model_params.json')
+
+    if path.exists(model_path):
+        print('Deleting existing model')
+        remove(model_path)
+
+    if path.exists(config_path):
+        remove(config_path)
 
     torch.save(model.state_dict(), model_path)
     
@@ -85,7 +94,7 @@ class LanguageModelTrainer(pl.LightningModule):
         super(LanguageModelTrainer, self).__init__()
 
         self.hparams = hparams if isinstance(hparams, DotDict) \
-                        else DotDict(hparams)
+            else DotDict(hparams)
 
         from utils import get_default_tokenizer
         _tokenizer = get_default_tokenizer()
@@ -281,7 +290,7 @@ class LanguageModelTrainer(pl.LightningModule):
         optimizer.step()
         optimizer.zero_grad()
 
-        if batch_nb % 5000 == 0: # save every 5000 steps
+        if self.current_step % 5000 == 0: # save every 10000 steps
             save_model(self.model, self.hparams)
 
     @pl.data_loader
