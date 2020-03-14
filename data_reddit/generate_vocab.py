@@ -1,8 +1,9 @@
 from os import path, listdir
-from tokenizers import SentencePieceBPETokenizer
+from tokenizers import SentencePieceBPETokenizer, ByteLevelBPETokenizer
 
 DATA_PATH = './data/reddit/raw'
-VOCAB_SIZE = 8000
+SAVE_PATH = './data/reddit/vocab'
+VOCAB_SIZE = 26006
 
 special_tokens = [
     '[PAD]',
@@ -14,7 +15,8 @@ special_tokens = [
 ]
 
 if __name__ == "__main__":
-    tokenizer = SentencePieceBPETokenizer(unk_token='[UNK]')
+    # tokenizer = SentencePieceBPETokenizer(unk_token='[UNK]')
+    tokenizer = ByteLevelBPETokenizer()
 
     texts = [
         path.join(DATA_PATH, item)
@@ -24,11 +26,10 @@ if __name__ == "__main__":
 
     tokenizer.train(texts, 
         vocab_size=VOCAB_SIZE, 
-        min_frequency=10,
+        min_frequency=2,
         special_tokens=special_tokens
     )
 
-    SAVE_PATH = path.join(DATA_PATH, 'vocab')
     if not path.isdir(SAVE_PATH):
         import os
         os.makedirs(SAVE_PATH)

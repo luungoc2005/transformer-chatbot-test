@@ -12,8 +12,8 @@ get_temp_path = lambda split_name: f'./data/corpus_{split_name}.pt'
 DATA_PATH = './data/reddit/'
 
 splits_ratios = OrderedDict()
-splits_ratios['train'] = .7
-splits_ratios['val'] = .2
+splits_ratios['train'] = .8
+splits_ratios['val'] = .1
 splits_ratios['test'] = .1
 
 class RedditCorpus(object):

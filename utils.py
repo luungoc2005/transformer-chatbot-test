@@ -9,13 +9,17 @@ class DotDict(dict):
     __delattr__ = dict.__delitem__
 
 def get_default_tokenizer():
-    from tokenizers import SentencePieceBPETokenizer
+    from tokenizers import SentencePieceBPETokenizer, ByteLevelBPETokenizer
     from data_reddit.generate_vocab import special_tokens
 
-    tokenizer = SentencePieceBPETokenizer(
+    # tokenizer = SentencePieceBPETokenizer(
+    #     path.join(VOCAB_PATH, 'en-vocab.json'),
+    #     path.join(VOCAB_PATH, 'en-merges.txt'),
+    #     unk_token='[UNK]'
+    # )
+    tokenizer = ByteLevelBPETokenizer(
         path.join(VOCAB_PATH, 'en-vocab.json'),
         path.join(VOCAB_PATH, 'en-merges.txt'),
-        unk_token='[UNK]'
     )
     tokenizer.add_special_tokens(special_tokens)
 
